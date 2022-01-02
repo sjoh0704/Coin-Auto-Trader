@@ -36,12 +36,12 @@ class PredictCoin:
 
     #종가 가격 
     def getClosePrice(self):
-                
+        data = self.getData()
         #현재 시간이 자정 이전
         closeDf = self.forecast[self.forecast['ds'] == self.forecast.iloc[-1]['ds'].replace(hour=9)]
         #현재 시간이 자정 이후
         if len(closeDf) == 0:
-            closeDf = self.forecast[self.forecast['ds'] == self.data.iloc[-1]['ds'].replace(hour=9)]
+            closeDf = self.forecast[self.forecast['ds'] == data.iloc[-1]['ds'].replace(hour=9)]
 
         #최종 당일 종가
         closeValue = closeDf['yhat'].values[0]

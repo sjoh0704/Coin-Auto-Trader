@@ -3,24 +3,30 @@ import pyupbit
 import datetime
 import schedule
 from fbprophet import Prophet
+from dotenv import load_dotenv
+import os
+from predictcoin import PredictCoin
 
-access = "your-access"
-secret = "your-secret"
+load_dotenv(verbose=True)
 
+access = os.getenv("access")
+secret = os.getenv("secret")
+predicted_close_price = 0
+
+# 변동성 돌파 전략 
 def get_target_price(ticker, k):
-    """변동성 돌파 전략으로 매수 목표가 조회"""
     df = pyupbit.get_ohlcv(ticker, interval="day", count=2)
     target_price = df.iloc[0]['close'] + (df.iloc[0]['high'] - df.iloc[0]['low']) * k
     return target_price
 
+# 시작 시간 조회 
 def get_start_time(ticker):
-    """시작 시간 조회"""
     df = pyupbit.get_ohlcv(ticker, interval="day", count=1)
     start_time = df.index[0]
     return start_time
 
+# 잔고 조회 
 def get_balance(ticker):
-    """잔고 조회"""
     balances = upbit.get_balances()
     for b in balances:
         if b['currency'] == ticker:
@@ -30,55 +36,55 @@ def get_balance(ticker):
                 return 0
     return 0
 
+# 현재가 조회 
 def get_current_price(ticker):
-    """현재가 조회"""
     return pyupbit.get_orderbook(ticker=ticker)["orderbook_units"][0]["ask_price"]
 
-predicted_close_price = 0
-def predict_price(ticker):
-    """Prophet으로 당일 종가 가격 예측"""
+# 예측가격 
+def predict_price(event):
     global predicted_close_price
-    df = pyupbit.get_ohlcv(ticker, interval="minute60")
-    df = df.reset_index()
-    df['ds'] = df['index']
-    df['y'] = df['close']
-    data = df[['ds','y']]
-    model = Prophet()
-    model.fit(data)
-    future = model.make_future_dataframe(periods=24, freq='H')
-    forecast = model.predict(future)
-    closeDf = forecast[forecast['ds'] == forecast.iloc[-1]['ds'].replace(hour=9)]
-    if len(closeDf) == 0:
-        closeDf = forecast[forecast['ds'] == data.iloc[-1]['ds'].replace(hour=9)]
-    closeValue = closeDf['yhat'].values[0]
-    predicted_close_price = closeValue
-predict_price("KRW-BTC")
-schedule.every().hour.do(lambda: predict_price("KRW-BTC"))
+    pc = PredictCoin(event)
+    pc.educate()
+    pc.predict()
+    predicted_close_price = pc.getClosePrice()
 
-# 로그인
-upbit = pyupbit.Upbit(access, secret)
-print("autotrade start")
 
-# 자동매매 시작
-while True:
-    try:
-        now = datetime.datetime.now()
-        start_time = get_start_time("KRW-BTC")
-        end_time = start_time + datetime.timedelta(days=1)
-        schedule.run_pending()
+if __name__ == "__main__":
 
-        if start_time < now < end_time - datetime.timedelta(seconds=10):
-            target_price = get_target_price("KRW-BTC", 0.5)
-            current_price = get_current_price("KRW-BTC")
-            if target_price < current_price and current_price < predicted_close_price:
-                krw = get_balance("KRW")
-                if krw > 5000:
-                    upbit.buy_market_order("KRW-BTC", krw*0.9995)
-        else:
-            btc = get_balance("BTC")
-            if btc > 0.00008:
-                upbit.sell_market_order("KRW-BTC", btc*0.9995)
-        time.sleep(1)
-    except Exception as e:
-        print(e)
-        time.sleep(1)
+    event = "KRW-BTC"
+    predict_price(event)
+    schedule.every().hour.do(lambda: predict_price(event))
+
+    # 로그인
+    upbit = pyupbit.Upbit(access, secret)
+    print("현재 KRW:", upbit.get_balance("KRW")) 
+    print("autotrade start")
+
+    # 자동매매 시작
+    while True:
+        try:
+            # 현재시간, 시작 시간, 끝나는 시간 
+            now = datetime.datetime.now() 
+            start_time = get_start_time(event) # 9
+            end_time = start_time + datetime.timedelta(days=1) # 9 + 1
+            schedule.run_pending()
+            if start_time < now < end_time - datetime.timedelta(seconds=10): # 8시 59분 50초까지
+                target_price = get_target_price(event, 0.5) # 매수 목표가 
+                current_price = get_current_price(event)
+                print("Target: {0}, Now: {1}, Predict: {2}".format(target_price, current_price, predicted_close_price))
+                if target_price < current_price < predicted_close_price:
+                    krw = get_balance("KRW")
+                    if krw > 5000: # 최소 거래 금액 5000원 이상이면 
+                        print("매수합니다.")
+                        upbit.buy_market_order(event, krw*0.9995) # 수수료 0.05퍼센트 빼고 
+            else:
+                # 전량 매도하기 
+                btc = get_balance("BTC")
+                if btc > 0.00008:
+                    print("매도합니다.")
+                    upbit.sell_market_order(event, btc*0.9995) # 수수료를 제외하고 매도 
+            time.sleep(1)
+            
+        except Exception as e:
+            print(e)
+            time.sleep(1)
