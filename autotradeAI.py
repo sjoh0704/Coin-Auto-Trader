@@ -5,11 +5,13 @@ import schedule
 from fbprophet import Prophet
 from dotenv import load_dotenv
 import os
+from predictcoin import PredictCoin
 
 load_dotenv(verbose=True)
 
 access = os.getenv("access")
 secret = os.getenv("secret")
+predicted_close_price = 0
 
 # 변동성 돌파 전략 
 def get_target_price(ticker, k):
@@ -38,11 +40,20 @@ def get_balance(ticker):
 def get_current_price(ticker):
     return pyupbit.get_orderbook(ticker=ticker)["orderbook_units"][0]["ask_price"]
 
+# 예측가격 
+def predict_price(event):
+    global predicted_close_price
+    pc = PredictCoin(event)
+    pc.educate()
+    pc.predict()
+    predicted_close_price = pc.getClosePrice()
+
 
 if __name__ == "__main__":
 
     event = "KRW-XRP"
-    K = 0.4
+    predict_price(event)
+    schedule.every().hour.do(lambda: predict_price(event))
 
     # 로그인
     upbit = pyupbit.Upbit(access, secret)
@@ -58,10 +69,10 @@ if __name__ == "__main__":
             end_time = start_time + datetime.timedelta(days=1) # 9 + 1
             schedule.run_pending()
             if start_time < now < end_time - datetime.timedelta(seconds=10): # 8시 59분 50초까지
-                target_price = get_target_price(event, K) # 매수 목표가 
+                target_price = get_target_price(event, 0.5) # 매수 목표가 
                 current_price = get_current_price(event)
-                print("Target: {0}, Now: {1}".format(target_price, current_price))
-                if target_price < current_price:
+                print("Target: {0}, Now: {1}, Predict: {2}".format(target_price, current_price, predicted_close_price))
+                if target_price < current_price < predicted_close_price:
                     krw = get_balance("KRW")
                     if krw > 5000: # 최소 거래 금액 5000원 이상이면 
                         print("매수합니다.")
