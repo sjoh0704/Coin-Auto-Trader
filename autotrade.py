@@ -1,8 +1,6 @@
 import time
 import pyupbit
 import datetime
-import schedule
-from fbprophet import Prophet
 from dotenv import load_dotenv
 import os
 
@@ -38,17 +36,19 @@ def get_balance(ticker):
 def get_current_price(ticker):
     return pyupbit.get_orderbook(ticker=ticker)["orderbook_units"][0]["ask_price"]
 
+def get_kind_of_coin(ticker):
+    return ticker.split('-')[1]
+
 
 if __name__ == "__main__":
 
     event = "KRW-XRP"
-    K = 0.4
+    K = 0.3
 
     # 로그인
     upbit = pyupbit.Upbit(access, secret)
     print("현재 KRW:", upbit.get_balance("KRW")) 
     print("autotrade start")
-
     # 자동매매 시작
     while True:
         try:
@@ -56,7 +56,6 @@ if __name__ == "__main__":
             now = datetime.datetime.now() 
             start_time = get_start_time(event) # 9
             end_time = start_time + datetime.timedelta(days=1) # 9 + 1
-            schedule.run_pending()
             if start_time < now < end_time - datetime.timedelta(seconds=10): # 8시 59분 50초까지
                 target_price = get_target_price(event, K) # 매수 목표가 
                 current_price = get_current_price(event)
@@ -68,10 +67,11 @@ if __name__ == "__main__":
                         upbit.buy_market_order(event, krw*0.9995) # 수수료 0.05퍼센트 빼고
             else:
                 # 전량 매도하기 
-                btc = get_balance("BTC")
-                if btc > 0.00008:
+                coin = get_kind_of_coin(event)
+                amount = get_balance(coin)
+                if amount > 0.00008:
                     print("매도합니다.")
-                    upbit.sell_market_order(event, btc*0.9995) # 수수료를 제외하고 매도 
+                    upbit.sell_market_order(event, amount*0.9995) # 수수료를 제외하고 매도 
             time.sleep(1)
             
         except Exception as e:
