@@ -42,8 +42,8 @@ def get_kind_of_coin(ticker):
 
 if __name__ == "__main__":
 
-    event = "KRW-XRP"
-    K = 0.3
+    event = "KRW-MBL"
+    K = 0.4
 
     # 로그인
     upbit = pyupbit.Upbit(access, secret)
